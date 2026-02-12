@@ -7,6 +7,13 @@ export default interface DigitalGardenSettings {
 	githubRepo: string;
 	githubUserName: string;
 
+	/**
+	 * The base path where notes will be published in the repository.
+	 * Default is "src/site/notes/" for backward compatibility.
+	 * User can configure this to publish to custom paths like "src/content/".
+	 */
+	contentBasePath: string;
+
 	gardenBaseUrl: string;
 	prHistory: string[];
 
@@ -52,6 +59,21 @@ export default interface DigitalGardenSettings {
 		baseUrl: string;
 	};
 
+	/**
+	 * Auto-deployment settings
+	 * Configure automatic deployment triggers after publishing content
+	 */
+	autoDeploySettings: {
+		/** Whether to enable automatic deployment after publishing */
+		enabled: boolean;
+		/** The GitHub Actions workflow ID or filename to trigger (e.g., "deploy.yml") */
+		workflowId: string;
+		/** The branch to deploy (default: main) */
+		branch: string;
+		/** Custom inputs to pass to the workflow */
+		workflowInputs: Record<string, string>;
+	};
+
 	defaultNoteSettings: {
 		dgHomeLink: boolean;
 		dgPassFrontmatter: boolean;
@@ -83,4 +105,10 @@ export default interface DigitalGardenSettings {
 	ENABLE_DEVELOPER_TOOLS?: boolean;
 	devPluginPath?: string;
 	logLevel?: ILogLevel;
+
+	// Extended settings for custom path publishing
+	publishBasePath?: string;
+	typeDirectoryKey?: string;
+	subDirectoryKey?: string;
+	imagePublishPath?: string;
 }

@@ -1,12 +1,13 @@
 import { MetadataCache, Notice, TFile, Vault } from "obsidian";
 import { Base64 } from "js-base64";
-import { getRewriteRules } from "../utils/utils";
+import { getRewriteRules, getGardenPathForNote } from "../utils/utils";
 import {
 	hasPublishFlag,
 	isPublishFrontmatterValid,
 } from "../publishFile/Validator";
 import DigitalGardenSiteManager, {
 	PathRewriteRules,
+	getNotePathBase,
 } from "../repositoryConnection/DigitalGardenSiteManager";
 import DigitalGardenSettings from "../models/settings";
 import { Assets, GardenPageCompiler } from "../compiler/GardenPageCompiler";
@@ -22,7 +23,7 @@ export interface MarkedForPublishing {
 }
 
 export const IMAGE_PATH_BASE = "src/site/img/user/";
-export const NOTE_PATH_BASE = "src/site/notes/";
+const DEFAULT_NOTE_PATH_BASE = "src/site/notes/";
 
 /**
  * Prepares files to be published and publishes them to Github
@@ -186,7 +187,8 @@ export default class Publisher {
 	}
 
 	async deleteNote(vaultFilePath: string, sha?: string) {
-		const path = `${NOTE_PATH_BASE}${vaultFilePath}`;
+		const notePathBase = getNotePathBase(this.settings);
+		const path = `${notePathBase}${vaultFilePath}`;
 
 		return await this.delete(path, sha);
 	}
@@ -220,10 +222,10 @@ export default class Publisher {
 
 		try {
 			const [text, assets] = file.compiledFile;
-			const remoteImageHashes = await this.getRemoteImageHashes();
+			const _remoteImageHashes = await this.getRemoteImageHashes();
 
 			await this.uploadText(file.getPath(), text, file?.remoteHash);
-			await this.uploadAssets(assets, remoteImageHashes);
+			await this.uploadAssets(assets, _remoteImageHashes);
 
 			return true;
 		} catch (error) {
@@ -255,6 +257,78 @@ export default class Publisher {
 		}
 	}
 
+	public async deleteImageBatch(filePaths: string[]): Promise<boolean> {
+		if (filePaths.length === 0) {
+			return true;
+		}
+
+		try {
+			const userGardenConnection = new RepositoryConnection(
+				await PublishPlatformConnectionFactory.createPublishPlatformConnection(
+					this.settings,
+				),
+			);
+
+			// Convert image paths to full paths with IMAGE_PATH_BASE prefix
+			const fullPaths = filePaths.map(
+				(path) => `${IMAGE_PATH_BASE}${path}`,
+			);
+			await userGardenConnection.deleteFiles(fullPaths);
+
+			return true;
+		} catch (error) {
+			console.error(error);
+
+			return false;
+		}
+	}
+
+	/**
+	 * Trigger auto-deployment workflow if enabled
+	 * @returns true if deployment was triggered successfully
+	 */
+	public async triggerDeployment(): Promise<boolean> {
+		if (!this.settings.autoDeploySettings.enabled) {
+			return false;
+		}
+
+		const { workflowId, branch, workflowInputs } =
+			this.settings.autoDeploySettings;
+
+		if (!workflowId) {
+			new Notice(
+				"Auto-deployment is enabled but workflow ID is not configured.",
+			);
+
+			Logger.warn(
+				"Auto-deployment is enabled but workflow ID is not configured",
+			);
+
+			return false;
+		}
+
+		try {
+			const userGardenConnection = new RepositoryConnection(
+				await PublishPlatformConnectionFactory.createPublishPlatformConnection(
+					this.settings,
+				),
+			);
+
+			const success = await userGardenConnection.triggerWorkflow(
+				workflowId,
+				branch,
+				workflowInputs,
+			);
+
+			return success;
+		} catch (error) {
+			console.error("Failed to trigger deployment:", error);
+			Logger.error("Failed to trigger deployment:", error);
+
+			return false;
+		}
+	}
+
 	public async publishBatch(files: CompiledPublishFile[]): Promise<boolean> {
 		const filesToPublish = files.filter((f) =>
 			isPublishFrontmatterValid(f.frontmatter),
@@ -272,10 +346,12 @@ export default class Publisher {
 			);
 
 			const remoteImageHashes = await this.getRemoteImageHashes();
+			const notePathBase = getNotePathBase(this.settings);
 
 			await userGardenConnection.updateFiles(
 				filesToPublish,
 				remoteImageHashes,
+				notePathBase,
 			);
 
 			return true;
@@ -345,8 +421,37 @@ export default class Publisher {
 
 	private async uploadText(filePath: string, content: string, sha?: string) {
 		content = Base64.encode(content);
-		const path = `${NOTE_PATH_BASE}${filePath}`;
-		await this.uploadToGithub(path, content, sha);
+
+		// Get file frontmatter to determine type and year
+		const cache = this.metadataCache.getCache(filePath);
+		const frontmatter = cache ? cache.frontmatter : {};
+
+		// Get configuration values
+		const basePath =
+			this.settings.publishBasePath || DEFAULT_NOTE_PATH_BASE;
+		const typeKey = this.settings.typeDirectoryKey || "type";
+		const subDirKey = this.settings.subDirectoryKey || "year";
+
+		// Build path components
+		let publishPath = basePath;
+
+		// Add type directory if specified in frontmatter
+		if (frontmatter && frontmatter[typeKey]) {
+			publishPath = `${publishPath}/${frontmatter[typeKey]}`;
+		}
+
+		// Add subdirectory if specified in frontmatter
+		if (frontmatter && frontmatter[subDirKey]) {
+			// Extract only the first part of the year path to avoid duplicate directories
+			const yearValue = String(frontmatter[subDirKey]).split("/")[0];
+			publishPath = `${publishPath}/${yearValue}`;
+		}
+
+		// Add filename after applying path rewrite rules
+		const gardenPath = getGardenPathForNote(filePath, this.rewriteRules);
+		publishPath = `${publishPath}/${gardenPath}`;
+
+		await this.uploadToGithub(publishPath, content, sha);
 	}
 
 	private async uploadImage(filePath: string, content: string, sha?: string) {
