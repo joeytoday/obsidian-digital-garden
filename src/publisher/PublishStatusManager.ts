@@ -18,6 +18,11 @@ export default class PublishStatusManager implements IPublishStatusManager {
 		this.siteManager = siteManager;
 		this.publisher = publisher;
 	}
+
+	/**
+	 * 生成需要删除的内容路径列表
+	 * 判断逻辑：远程存在但本地未标记为发布的文件
+	 */
 	private generateDeletedContentPaths(
 		remoteNoteHashes: { [key: string]: string },
 		marked: string[],
@@ -30,12 +35,19 @@ export default class PublishStatusManager implements IPublishStatusManager {
 			? marked.map((path) => getGardenPathForNote(path, rewriteRules))
 			: marked;
 
+		// 检查路径是否被标记为发布
 		const isMarkedForPublish = (key: string) =>
-			rewrittenMarked.find((f) => f === key);
+			rewrittenMarked.some((f) => f === key);
 
-		const deletedPaths = Object.keys(remoteNoteHashes).filter(
-			(key) => !isJsFile(key) && !isMarkedForPublish(key),
-		);
+		// 过滤出需要删除的路径
+		const deletedPaths = Object.keys(remoteNoteHashes).filter((key) => {
+			if (isJsFile(key)) return false;
+
+			// 如果路径被标记为发布，不是删除
+			if (isMarkedForPublish(key)) return false;
+
+			return true;
+		});
 
 		const pathsWithSha = deletedPaths.map((path) => {
 			return {
@@ -46,6 +58,7 @@ export default class PublishStatusManager implements IPublishStatusManager {
 
 		return pathsWithSha;
 	}
+
 	async getPublishStatus(): Promise<PublishStatus> {
 		const unpublishedNotes: Array<CompiledPublishFile> = [];
 		const publishedNotes: Array<CompiledPublishFile> = [];
@@ -72,45 +85,60 @@ export default class PublishStatusManager implements IPublishStatusManager {
 			this.publisher.settings.pathRewriteRules,
 		);
 
+		// 处理发布状态判断
+		// 只检测 pub-blog=true 的文件
 		for (const file of marked.notes) {
 			const compiledFile = await file.compile();
 			const [content, _] = compiledFile.getCompiledFile();
-
 			const localHash = generateBlobHash(content);
 
-			// 获取文件的frontmatter信息，检查pub-blog标志
+			// 获取文件的 frontmatter 信息
 			const frontmatter = file.getFrontmatter();
-			const isPubBlogEnabled = !!(frontmatter && frontmatter["pub-blog"]);
 
-			// 只处理pub-blog为true的文件
-			if (isPubBlogEnabled) {
-				// 1. 使用重写后的路径直接查找远程文件
-				const rewrittenPath = getGardenPathForNote(
-					file.getPath(),
-					rewriteRules,
-				);
-				const remoteHash = remoteNoteHashes[rewrittenPath];
-				const fileFound = remoteHash !== undefined;
+			// 支持字符串和数组格式的 status
+			const status = Array.isArray(frontmatter?.status)
+				? frontmatter.status[0]
+				: frontmatter?.status;
 
-				// 2. 如果找到同名文件，表示已经发布过
-				if (fileFound && remoteHash !== undefined) {
+			// 使用重写后的路径查找远程文件
+			const rewrittenPath = getGardenPathForNote(
+				file.getPath(),
+				rewriteRules,
+			);
+			const remoteHash = remoteNoteHashes[rewrittenPath];
+			const fileFound = remoteHash !== undefined;
+
+			// 根据 status 属性判断发布状态
+			if (status === "🟡 Ongoing" || status === "🟡Ongoing") {
+				// 🟡 Ongoing 状态：检测远程状态
+				// 远程有文件 → Changed（表示修改过需要重新发布）
+				// 远程没有文件 → Unpublished（表示新文件）
+				if (fileFound) {
+					compiledFile.setRemoteHash(remoteHash);
+					changedNotes.push(compiledFile);
+				} else {
+					unpublishedNotes.push(compiledFile);
+				}
+			} else if (status === "🟢 Done" || status === "🟢Done") {
+				// 🟢 Done 状态：表示已发布完成，始终显示在 Published 中
+				publishedNotes.push(compiledFile);
+			} else {
+				// 其他状态（或无 status）：使用默认逻辑检测
+				if (fileFound) {
 					compiledFile.setRemoteHash(remoteHash);
 
-					// 3. 通过哈希值判断是否有更改
 					if (remoteHash === localHash) {
-						// 没有更改，放入published
 						publishedNotes.push(compiledFile);
 					} else {
-						// 有更改，放入changed
 						changedNotes.push(compiledFile);
 					}
 				} else {
-					// 4. pub-blog为true但在远程仓库中找不到同名文件，放入unpublished
 					unpublishedNotes.push(compiledFile);
 				}
 			}
 		}
 
+		// 使用简化的删除检测逻辑
 		const deletedNotePaths = this.generateDeletedContentPaths(
 			remoteNoteHashes,
 			marked.notes.map((f) => f.getPath()),
