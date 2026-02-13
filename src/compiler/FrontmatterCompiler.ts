@@ -38,7 +38,10 @@ export class FrontmatterCompiler {
 			"pub-blog": true,
 		};
 
-		publishedFrontMatter = this.addPublishDate(publishedFrontMatter);
+		publishedFrontMatter = this.addPublishDate(
+			fileFrontMatter,
+			publishedFrontMatter,
+		);
 
 		publishedFrontMatter = this.addPermalink(
 			fileFrontMatter,
@@ -62,14 +65,17 @@ export class FrontmatterCompiler {
 		return `---\n${frontMatterString}---\n`;
 	}
 
-	private addPublishDate(newFrontMatter: TPublishedFrontMatter) {
+	private addPublishDate(
+		baseFrontMatter: TFrontmatter,
+		newFrontMatter: TPublishedFrontMatter,
+	) {
 		const publishedFrontMatter = { ...newFrontMatter };
-		const now = new Date();
-		// 格式化为日期格式: 2025-01-10
-		const year = now.getFullYear();
-		const month = String(now.getMonth() + 1).padStart(2, "0");
-		const day = String(now.getDate()).padStart(2, "0");
-		publishedFrontMatter["publishDate"] = `${year}-${month}-${day}`;
+
+		// 如果本地文件有 publishDate 属性，使用它
+		if (baseFrontMatter && baseFrontMatter["publishDate"]) {
+			publishedFrontMatter["publishDate"] =
+				baseFrontMatter["publishDate"];
+		}
 
 		return publishedFrontMatter;
 	}
