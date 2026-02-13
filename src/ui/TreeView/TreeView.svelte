@@ -75,7 +75,9 @@
 		{readOnly}
 		{enableShowDiff}
 		on:toggle={rebuildTree}
-		on:showDiff={(e) => showDiff(e.detail.node.path)}
+		on:showDiff={(e) => {
+			showDiff(e.detail.node.path);
+		}}
 	/>
 </div>
 

@@ -175,17 +175,22 @@ export default class DigitalGardenSiteManager {
 
 		const notePathBase = getNotePathBase(this.settings);
 
-		const response = await (
-			await this.getUserGardenConnection()
-		).getFile(notePathBase + path);
+		try {
+			const response = await (
+				await this.getUserGardenConnection()
+			).getFile(notePathBase + path);
 
-		if (!response) {
+			if (!response) {
+				return "";
+			}
+
+			const content = Base64.decode(response.content);
+
+			return content;
+		} catch (error) {
+			// 文件不存在，返回空字符串
 			return "";
 		}
-
-		const content = Base64.decode(response.content);
-
-		return content;
 	}
 
 	async getNoteHashes(

@@ -38,6 +38,8 @@ export class FrontmatterCompiler {
 			"pub-blog": true,
 		};
 
+		publishedFrontMatter = this.addPublishDate(publishedFrontMatter);
+
 		publishedFrontMatter = this.addPermalink(
 			fileFrontMatter,
 			publishedFrontMatter,
@@ -55,9 +57,21 @@ export class FrontmatterCompiler {
 		);
 
 		const fullFrontMatter = publishedFrontMatter;
-		const frontMatterString = JSON.stringify(fullFrontMatter);
+		const frontMatterString = this.frontMatterToYaml(fullFrontMatter);
 
-		return `---\n${frontMatterString}\n---\n`;
+		return `---\n${frontMatterString}---\n`;
+	}
+
+	private addPublishDate(newFrontMatter: TPublishedFrontMatter) {
+		const publishedFrontMatter = { ...newFrontMatter };
+		const now = new Date();
+		// 格式化为日期格式: 2025-01-10
+		const year = now.getFullYear();
+		const month = String(now.getMonth() + 1).padStart(2, "0");
+		const day = String(now.getDate()).padStart(2, "0");
+		publishedFrontMatter["publishDate"] = `${year}-${month}-${day}`;
+
+		return publishedFrontMatter;
 	}
 
 	private addPermalink(
@@ -128,5 +142,102 @@ export class FrontmatterCompiler {
 		}
 
 		return publishedFrontMatter;
+	}
+
+	/**
+	 * 将 frontmatter 对象转换为 YAML 格式字符串
+	 */
+	private frontMatterToYaml(frontMatter: Record<string, unknown>): string {
+		if (Object.keys(frontMatter).length === 0) {
+			return "";
+		}
+
+		let yaml = "";
+
+		for (const key of Object.keys(frontMatter)) {
+			const value = frontMatter[key];
+			yaml += this.formatYamlValue(key, value);
+		}
+
+		return yaml;
+	}
+
+	/**
+	 * 格式化 YAML 键值对
+	 */
+	private formatYamlValue(key: string, value: unknown): string {
+		if (value === null || value === undefined) {
+			return `${key}: \n`;
+		}
+
+		if (typeof value === "boolean") {
+			return `${key}: ${value}\n`;
+		}
+
+		if (typeof value === "number") {
+			return `${key}: ${value}\n`;
+		}
+
+		if (typeof value === "string") {
+			// 如果字符串包含特殊字符，使用引号包裹
+			if (
+				value.includes(":") ||
+				value.includes("#") ||
+				value.includes("{") ||
+				value.includes("}") ||
+				value.includes("[") ||
+				value.includes("]") ||
+				value.includes(",") ||
+				value.includes("&") ||
+				value.includes("*") ||
+				value.includes("?") ||
+				value.includes("|") ||
+				value.includes("-") ||
+				value.includes("<") ||
+				value.includes(">") ||
+				value.includes("=") ||
+				value.includes("!") ||
+				value.includes("%") ||
+				value.includes("@") ||
+				value.includes("`") ||
+				value.startsWith(" ") ||
+				value.endsWith(" ") ||
+				value.includes("\n")
+			) {
+				// 使用双引号并转义特殊字符
+				const escaped = value
+					.replace(/\\/g, "\\\\")
+					.replace(/"/g, '\\"')
+					.replace(/\n/g, "\\n");
+
+				return `${key}: "${escaped}"\n`;
+			}
+
+			return `${key}: ${value}\n`;
+		}
+
+		if (Array.isArray(value)) {
+			if (value.length === 0) {
+				return `${key}: []\n`;
+			}
+			let result = `${key}:\n`;
+
+			for (const item of value) {
+				if (typeof item === "string") {
+					result += `  - ${item}\n`;
+				} else {
+					result += `  - ${item}\n`;
+				}
+			}
+
+			return result;
+		}
+
+		if (typeof value === "object") {
+			// 对于对象类型，使用 JSON 格式作为回退
+			return `${key}: ${JSON.stringify(value)}\n`;
+		}
+
+		return `${key}: ${value}\n`;
 	}
 }

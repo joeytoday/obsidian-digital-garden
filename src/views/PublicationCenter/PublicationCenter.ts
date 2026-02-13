@@ -7,6 +7,7 @@ import Publisher from "../../publisher/Publisher";
 import PublicationCenterSvelte from "./PublicationCenter.svelte";
 import DiffView from "./DiffView.svelte";
 import * as Diff from "diff";
+import { getRewriteRules, getGardenPathForNote } from "../../utils/utils";
 
 export class PublicationCenter {
 	modal: Modal;
@@ -80,10 +81,29 @@ export class PublicationCenter {
 	}
 
 	private showDiff = async (notePath: string) => {
+		console.log("[Digital Garden] showDiff called for path:", notePath);
+
 		try {
+			// 应用路径重写规则获取远程文件路径
+			const rewriteRules = getRewriteRules(
+				this.settings.pathRewriteRules,
+			);
+			const remotePath = getGardenPathForNote(notePath, rewriteRules);
+
+			console.log(
+				"[Digital Garden] Remote path after rewrite:",
+				remotePath,
+			);
+
 			const remoteContent =
-				await this.siteManager.getNoteContent(notePath);
+				await this.siteManager.getNoteContent(remotePath);
+
+			console.log(
+				"[Digital Garden] Remote content loaded, length:",
+				remoteContent.length,
+			);
 			const localFile = this.vault.getAbstractFileByPath(notePath);
+			console.log("[Digital Garden] Local file:", localFile);
 
 			const localPublishFile = new PublishFile({
 				file: localFile as TFile,
@@ -114,7 +134,7 @@ export class PublicationCenter {
 					});
 				};
 
-				this.modal.onClose = () => {
+				diffModal.onClose = () => {
 					if (diffView) {
 						diffView.$destroy();
 					}
