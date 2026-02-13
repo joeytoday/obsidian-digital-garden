@@ -121,6 +121,11 @@ export class FrontmatterCompiler {
 			if (baseFrontMatter["title"]) {
 				publishedFrontMatter["title"] = baseFrontMatter["title"];
 			}
+
+			if (baseFrontMatter["description"]) {
+				publishedFrontMatter["description"] =
+					baseFrontMatter["description"];
+			}
 		}
 
 		return publishedFrontMatter;
