@@ -1,9 +1,9 @@
 {
-	"id": "blog-publish",
-	"name": "Blog Publish",
+	"id": "blog-publisher",
+	"name": "Blog Publisher",
 	"version": "1.2.6",
 	"minAppVersion": "1.10.0",
-	"description": "Publish your notes to my blog.",
+	"description": "Publish my posts to my site.",
 	"author": "joeytdoay",
 	"authorUrl": "https://joeytdoay.com",
 	"isDesktopOnly": false
